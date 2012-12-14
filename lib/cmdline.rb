@@ -18,7 +18,11 @@ class CmdLine
                 @config[:refresh_rate] = refresh_rate
             end
 
-            opt.on_tail '-h', '--help', 'Show usage info' do 
+            opt.on '-s', '--sniffer_type=SNIFFER', 'Pick the Sniffer type you want to use (default memcache)' do |sniffer_type|
+                @config[:sniffer_type] = sniffer_type
+            end
+
+            opt.on_tail '-h', '--help', 'Show usage info' do
                 puts opts
                 exit
             end

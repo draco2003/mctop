@@ -1,6 +1,6 @@
 require 'pcap'
 
-class MemcacheSniffer 
+class MemcacheSniffer
     attr_accessor :metrics, :semaphore
 
     def initialize(config)
@@ -18,7 +18,7 @@ class MemcacheSniffer
 
     def start
         cap = Pcap::Capture.open_live(@source, 1500)
-        
+
         @metrics[:start_time] = Time.new.to_f
 
         @done      = false
@@ -31,6 +31,62 @@ class MemcacheSniffer
             if packet.raw_data =~ /VALUE (\S+) \S+ (\S+)/
                 key   = $1
                 bytes = $2
+
+                @semaphore.synchronize do
+                    if @metrics[:calls].has_key?(key)
+                        @metrics[:calls][key] += 1
+                    else
+                        @metrics[:calls][key] = 1
+                    end
+
+                    @metrics[:objsize][key] = bytes.to_i
+                end
+            end
+
+            break if @done
+        end
+
+        cap.close
+    end
+
+    def done
+        @done = true
+    end
+end
+
+
+class StatsdSniffer
+    attr_accessor :metrics, :semaphore
+
+    def initialize(config)
+        @source    = config[:nic]
+        @port      = config.has_key?(:port) ? config[:port] : 8125
+
+        @metrics = {}
+        @metrics[:calls]   = {}
+        @metrics[:objsize] = {}
+        @metrics[:reqsec]  = {}
+        @metrics[:bw]      = {}
+        @metrics[:stats]   = { :recv => 0, :drop => 0 }
+
+        @semaphore = Mutex.new
+    end
+
+    def start
+        cap = Pcap::Capture.open_live(@source, 1500)
+
+        @metrics[:start_time] = Time.new.to_f
+
+        @done      = false
+
+        cap.setfilter("udp port #{@port}")
+        cap.loop do |packet|
+            @metrics[:stats] = cap.stats
+
+            # parse key name, and size from VALUE responses
+            if packet.udp_data =~ /(\S+):/
+                key   = $1
+                bytes = packet.udp_data.length
 
                 @semaphore.synchronize do
                     if @metrics[:calls].has_key?(key)
